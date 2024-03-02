@@ -13,7 +13,7 @@ def close_enough(a, b):
 
 def find_contours(image: cv.typing.MatLike) -> Sequence[cv.typing.MatLike]:
     image_grayscale = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    ret, thresh = cv.threshold(image_grayscale, 50, 255, 0)
+    ret, thresh = cv.threshold(image_grayscale, 127, 255, 0)
     contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
     return contours
 
