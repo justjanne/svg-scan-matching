@@ -1,11 +1,12 @@
+import base64
 import math
+import os
 import sys
 from typing import Sequence
 from xml.dom.minidom import parse
 
 import cv2 as cv
 import numpy
-
 
 def close_enough(a, b):
     return min(a, b) / max(a, b) > 0.7
@@ -14,7 +15,7 @@ def close_enough(a, b):
 def find_contours(image: cv.typing.MatLike) -> Sequence[cv.typing.MatLike]:
     image_grayscale = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
     image_grayscale = cv.bitwise_not(image_grayscale)
-    ret, thresh = cv.threshold(image_grayscale, 50, 255, 0)
+    ret, thresh = cv.threshold(image_grayscale, 60, 255, 0)
     contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
     return contours
 
@@ -29,7 +30,9 @@ def prefilter_double(shape: numpy.shape, contour: cv.typing.MatLike) -> bool:
         return False
     if not close_enough(w, h):
         return False
-    if not close_enough(w, shape[1] / 55 * 2):
+    if not close_enough(area, w * 11):
+        return False
+    if not close_enough(w, shape[1] / 30):
         return False
     return True
 
@@ -44,7 +47,9 @@ def prefilter_single(shape: numpy.shape, contour: cv.typing.MatLike) -> bool:
         return False
     if not close_enough(w, h):
         return False
-    if not close_enough(w, shape[1] / 55):
+    if not close_enough(area, w * 11):
+        return False
+    if not close_enough(w, shape[1] / 60):
         return False
     return True
 
@@ -124,13 +129,13 @@ def sort_marks(marks: list[list[(float, float)]]) -> list[list[(float, float)]]:
     threshold_y = (min_y + max_y) / 2
 
     top_left = [((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks
-                if x2 < threshold_x and y2 < threshold_y]
+                if x2 < threshold_x * 1.1 and y2 < threshold_y * 0.9]
     top_right = [((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks
-                 if x1 > threshold_x and y2 < threshold_y]
+                 if x1 > threshold_x * 0.9 and y2 < threshold_y * 0.9]
     bottom_left = [((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks
-                   if x2 < threshold_x and y1 > threshold_y]
+                   if x2 < threshold_x * 0.9 and y1 > threshold_y * 1.1]
     bottom_right = [((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks
-                    if x1 > threshold_x and y1 > threshold_y]
+                    if x1 > threshold_x * 1.1 and y1 > threshold_y * 1.1]
 
     return [
         top_left[0],
@@ -191,9 +196,11 @@ def find_marks(file: str) -> [(float, float), (float, float), (float, float), (f
     shapes_double = [simplify_double(cnt) for cnt in contours_double]
     cv.drawContours(scan, contours_single, -1, (0, 0, 255), 2)
     cv.drawContours(scan, contours_double, -1, (255, 0, 0), 2)
-    cv.drawContours(scan, shapes_single, -1, (0, 255, 255), 2)
+    for tri in shapes_single:
+        cv.drawContours(scan, [numpy.intp(tri)], -1, (0, 255, 255), 2)
     for rect in shapes_double:
         cv.drawContours(scan, [numpy.intp(rect)], -1, (0, 255, 255), 2)
+    cv.imwrite("debug.jpg", scan)
     marks = process_candidates(shapes_double + merge_clusters(shapes_single))
     marks = sort_marks(marks)
     for ((x1, x2), (y1, y2)) in marks:
@@ -221,8 +228,8 @@ def calculate_transform(
     marks = [(x * 296.7, y * 301) for (x, y) in marks]
     target = [(10, 10), (200, 10), (10, 287), (200, 287)]
     matrix, _ = cv.estimateAffine2D(numpy.array(target), numpy.array(marks))
-    return (matrix[0][0], matrix[1][0], matrix[0][2],
-            matrix[0][1], matrix[1][1], matrix[1][2])
+    return (matrix[0][0], matrix[1][0], matrix[0][2]+0.3,
+            matrix[0][1], matrix[1][1], matrix[1][2]+0.3)
 
 
 def format_transform_matrix(matrix: (float, float, float, float, float, float)) -> str:
@@ -240,14 +247,24 @@ def generate_cut(image: str, source: str, target: str, transform: (float, float,
     for node in transformable:
         document.removeChild(node)
         wrapper.appendChild(node)
+    rect = dom.createElement("rect")
+    rect.setAttribute("x", "0")
+    rect.setAttribute("y", "0")
+    rect.setAttribute("width", "211")
+    rect.setAttribute("height", "298")
+    rect.setAttribute("fill", "#ffffff")
+    document.appendChild(rect)
+
     scan = dom.createElement("image")
-    scan.setAttribute("href", image)
+    with open(image, "rb") as file:
+        scan.setAttribute("href", "data:image/jpeg;base64,"+base64.b64encode(file.read()).decode('ascii'))
     scan.setAttribute("x", "0")
     scan.setAttribute("y", "0")
     scan.setAttribute("width", "296.7")
     scan.setAttribute("height", "301")
     scan.setAttribute("preserveAspectRatio", "none")
-    document.appendChild(scan)
+    #document.appendChild(scan)
+
     document.appendChild(wrapper)
     with open(target, "w") as writer:
         dom.writexml(writer, indent="  ", addindent="  ", newl="\n")
@@ -256,7 +273,7 @@ def generate_cut(image: str, source: str, target: str, transform: (float, float,
 def process_cut(source: str, scan: str):
     marks = find_marks(scan)
     transform = calculate_transform(marks)
-    generate_cut(scan, source, source.replace(".svg", "_cut.svg"), transform)
+    generate_cut(scan, source, scan.replace(".jpg", "_cut.svg"), transform)
 
 
 if __name__ == "__main__":
