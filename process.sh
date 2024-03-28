@@ -9,14 +9,24 @@ stat "$INPUT" >/dev/null
 stat "$SCAN" >/dev/null
 
 PREPROCESS="$(realpath "preprocess/preprocess.sh")"
+SVG_TO_JSON="$(realpath "svg_to_json/main.py")"
+JSON_TO_FCM="$(realpath "json_to_fcm/target/release/fcm-converter")"
 WORKDIR="/tmp/svgalign-$(uuidgen)"
 mkdir "$WORKDIR"
 
 (cd align; pipenv run python main.py "$INPUT" "$SCAN" "$WORKDIR/align.svg")
 cd "$WORKDIR"
-"$PREPROCESS" "align.svg" "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut_kiss.svg" "cut_kiss" || true
-#rm "$WORKDIR"/preprocess-*.svg || true
-#"$PREPROCESS" "align.svg" "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut_die.svg" "cut_die" || true
-#rm "$WORKDIR"/preprocess-*.svg || true
-#rm "$WORKDIR/align.svg"
-#rmdir "$WORKDIR"
+("$PREPROCESS" align.svg preprocess-output.svg cut && \
+  "$SVG_TO_JSON" preprocess-output.svg preprocess-output.json && \
+  "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut.fcm") || true
+rm "$WORKDIR"/preprocess-* || true
+("$PREPROCESS" align.svg preprocess-output.svg cut_kiss && \
+  "$SVG_TO_JSON" preprocess-output.svg preprocess-output.json && \
+  "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut_kiss.fcm") || true
+rm "$WORKDIR"/preprocess-* || true
+("$PREPROCESS" align.svg preprocess-output.svg cut_die && \
+  "$SVG_TO_JSON" preprocess-output.svg preprocess-output.json && \
+  "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut_die.fcm") || true
+rm "$WORKDIR"/preprocess-* || true
+rm "$WORKDIR/align.svg"
+rmdir "$WORKDIR"

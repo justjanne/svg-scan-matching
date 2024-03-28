@@ -199,12 +199,12 @@ def find_marks(file: str) -> [(float, float), (float, float), (float, float), (f
         cv2.drawContours(scan, [numpy.intp(tri)], -1, (0, 255, 255), 2)
     for rect in shapes_double:
         cv2.drawContours(scan, [numpy.intp(rect)], -1, (0, 255, 255), 2)
-    cv2.imwrite("../test/debug_1.jpg", scan)
+    cv2.imwrite("debug/contours_1.jpg", scan)
     marks = process_candidates(shapes_double + merge_clusters(shapes_single))
     marks = sort_marks(marks)
     for ((x1, x2), (y1, y2)) in marks:
         cv2.rectangle(scan, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
-    cv2.imwrite("../test/debug_2.jpg", scan)
+    cv2.imwrite("debug/contours_2.jpg", scan)
 
     return [
         to_mm(scan.shape, (avg(x1, x2), avg(y1, y2)))
