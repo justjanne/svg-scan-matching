@@ -1,29 +1,28 @@
-import base64
 import math
-import os
 import sys
 from typing import Sequence
 from xml.dom.minidom import parse
 
-import cv2 as cv
+import cv2
 import numpy
+
 
 def close_enough(a, b):
     return min(a, b) / max(a, b) > 0.7
 
 
-def find_contours(image: cv.typing.MatLike) -> Sequence[cv.typing.MatLike]:
-    image_grayscale = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    image_grayscale = cv.bitwise_not(image_grayscale)
-    ret, thresh = cv.threshold(image_grayscale, 60, 255, 0)
-    contours, hierarchy = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+def find_contours(image: cv2.typing.MatLike) -> Sequence[cv2.typing.MatLike]:
+    image_grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    image_grayscale = cv2.bitwise_not(image_grayscale)
+    ret, thresh = cv2.threshold(image_grayscale, 60, 255, 0)
+    contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     return contours
 
 
-def prefilter_double(shape: numpy.shape, contour: cv.typing.MatLike) -> bool:
-    area = cv.contourArea(contour)
-    _, _, w, h = cv.boundingRect(contour)
-    contour_length = cv.arcLength(contour, True)
+def prefilter_double(shape: numpy.shape, contour: cv2.typing.MatLike) -> bool:
+    area = cv2.contourArea(contour)
+    _, _, w, h = cv2.boundingRect(contour)
+    contour_length = cv2.arcLength(contour, True)
     if 0 in [w, h, area, contour_length]:
         return False
     if not close_enough(contour_length, w * 2.2 + h * 2.2):
@@ -37,10 +36,10 @@ def prefilter_double(shape: numpy.shape, contour: cv.typing.MatLike) -> bool:
     return True
 
 
-def prefilter_single(shape: numpy.shape, contour: cv.typing.MatLike) -> bool:
-    area = cv.contourArea(contour)
-    _, _, w, h = cv.boundingRect(contour)
-    contour_length = cv.arcLength(contour, True)
+def prefilter_single(shape: numpy.shape, contour: cv2.typing.MatLike) -> bool:
+    area = cv2.contourArea(contour)
+    _, _, w, h = cv2.boundingRect(contour)
+    contour_length = cv2.arcLength(contour, True)
     if 0 in [w, h, area, contour_length]:
         return False
     if not close_enough(contour_length, w * 2.2 + h * 2.2):
@@ -80,7 +79,7 @@ def merge_cluster(cluster: Sequence[numpy.array]) -> numpy.array:
             match = marks_match(el1, el2)
             if match is None:
                 continue
-            return cv.boxPoints(cv.minAreaRect(numpy.array(el1 + el2)))
+            return cv2.boxPoints(cv2.minAreaRect(numpy.array(el1 + el2)))
     return None
 
 
@@ -120,7 +119,7 @@ def merge_clusters(candidates: list[list[(float, float)]]):
     return [mark for mark in marks if mark is not None]
 
 
-def sort_marks(marks: list[list[(float, float)]]) -> list[list[(float, float)]]:
+def sort_marks(marks: list[list[(float, float)]]) -> list[((float, float), (float, float))]:
     min_x = min(x1 for ((x1, _), (_, _)) in marks)
     max_x = max(x2 for ((_, x2), (_, _)) in marks)
     min_y = min(y1 for ((_, _), (y1, _)) in marks)
@@ -165,17 +164,17 @@ def avg(*items: list[float]) -> float:
 
 
 def simplify_single(contour: numpy.array) -> numpy.array:
-    _, points = cv.minEnclosingTriangle(contour)
+    _, points = cv2.minEnclosingTriangle(contour)
     return [(point[0][0], point[0][1]) for point in points]
 
 
 def simplify_double(contour: numpy.array) -> numpy.array:
-    rect = cv.minAreaRect(contour)
-    points = cv.boxPoints(rect)
+    rect = cv2.minAreaRect(contour)
+    points = cv2.boxPoints(rect)
     return points
 
 
-def add_border(image: cv.typing.MatLike):
+def add_border(image: cv2.typing.MatLike):
     for y in range(0, image.shape[0]):
         image[y, 0] = (255, 255, 255)
     for x in range(0, image.shape[1]):
@@ -187,25 +186,25 @@ def add_border(image: cv.typing.MatLike):
 
 
 def find_marks(file: str) -> [(float, float), (float, float), (float, float), (float, float)]:
-    scan = cv.imread(file)
+    scan = cv2.imread(file)
     add_border(scan)
     candidates = find_contours(scan)
     contours_single = [cnt for cnt in candidates if prefilter_single(scan.shape, cnt)]
     contours_double = [cnt for cnt in candidates if prefilter_double(scan.shape, cnt)]
     shapes_single = [simplify_single(cnt) for cnt in contours_single]
     shapes_double = [simplify_double(cnt) for cnt in contours_double]
-    cv.drawContours(scan, contours_single, -1, (0, 0, 255), 2)
-    cv.drawContours(scan, contours_double, -1, (255, 0, 0), 2)
+    cv2.drawContours(scan, contours_single, -1, (0, 0, 255), 2)
+    cv2.drawContours(scan, contours_double, -1, (255, 0, 0), 2)
     for tri in shapes_single:
-        cv.drawContours(scan, [numpy.intp(tri)], -1, (0, 255, 255), 2)
+        cv2.drawContours(scan, [numpy.intp(tri)], -1, (0, 255, 255), 2)
     for rect in shapes_double:
-        cv.drawContours(scan, [numpy.intp(rect)], -1, (0, 255, 255), 2)
-    cv.imwrite("debug.jpg", scan)
+        cv2.drawContours(scan, [numpy.intp(rect)], -1, (0, 255, 255), 2)
+    cv2.imwrite("../test/debug_1.jpg", scan)
     marks = process_candidates(shapes_double + merge_clusters(shapes_single))
     marks = sort_marks(marks)
     for ((x1, x2), (y1, y2)) in marks:
-        cv.rectangle(scan, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
-    cv.imwrite("debug.jpg", scan)
+        cv2.rectangle(scan, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
+    cv2.imwrite("../test/debug_2.jpg", scan)
 
     return [
         to_mm(scan.shape, (avg(x1, x2), avg(y1, y2)))
@@ -227,9 +226,9 @@ def calculate_transform(
 ) -> (float, float, float, float, float, float):
     marks = [(x * 296.7, y * 301) for (x, y) in marks]
     target = [(10, 10), (200, 10), (10, 287), (200, 287)]
-    matrix, _ = cv.estimateAffine2D(numpy.array(target), numpy.array(marks))
-    return (matrix[0][0], matrix[1][0], matrix[0][2]+0.3,
-            matrix[0][1], matrix[1][1], matrix[1][2]+0.3)
+    matrix, _ = cv2.estimateAffine2D(numpy.array(target), numpy.array(marks))
+    return (matrix[0][0], matrix[1][0], matrix[0][2],
+            matrix[0][1], matrix[1][1], matrix[1][2])
 
 
 def format_transform_matrix(matrix: (float, float, float, float, float, float)) -> str:
@@ -238,7 +237,7 @@ def format_transform_matrix(matrix: (float, float, float, float, float, float)) 
     )
 
 
-def generate_cut(image: str, source: str, target: str, transform: (float, float, float, float, float, float)):
+def generate_cut(source: str, target: str, transform: (float, float, float, float, float, float)):
     dom = parse(source)
     document = dom.firstChild
     wrapper = dom.createElement("g")
@@ -247,36 +246,18 @@ def generate_cut(image: str, source: str, target: str, transform: (float, float,
     for node in transformable:
         document.removeChild(node)
         wrapper.appendChild(node)
-    rect = dom.createElement("rect")
-    rect.setAttribute("x", "0")
-    rect.setAttribute("y", "0")
-    rect.setAttribute("width", "211")
-    rect.setAttribute("height", "298")
-    rect.setAttribute("fill", "#ffffff")
-    document.appendChild(rect)
-
-    scan = dom.createElement("image")
-    with open(image, "rb") as file:
-        scan.setAttribute("href", "data:image/jpeg;base64,"+base64.b64encode(file.read()).decode('ascii'))
-    scan.setAttribute("x", "0")
-    scan.setAttribute("y", "0")
-    scan.setAttribute("width", "296.7")
-    scan.setAttribute("height", "301")
-    scan.setAttribute("preserveAspectRatio", "none")
-    #document.appendChild(scan)
-
     document.appendChild(wrapper)
     with open(target, "w") as writer:
         dom.writexml(writer, indent="  ", addindent="  ", newl="\n")
 
 
-def process_cut(source: str, scan: str):
+def process_cut(source: str, scan: str, out: str):
     marks = find_marks(scan)
     transform = calculate_transform(marks)
-    generate_cut(scan, source, scan.replace(".jpg", "_cut.svg"), transform)
+    generate_cut(source, out, transform)
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    if len(args) == 2:
-        process_cut(args[0], args[1])
+    if len(args) == 3:
+        process_cut(args[0], args[1], args[2])
