@@ -118,30 +118,39 @@ def merge_clusters(candidates: list[list[(float, float)]]):
 
     return [mark for mark in marks if mark is not None]
 
+def distance_mark(center: (float, float), mark: ((float, float), (float, float))):
+    ((x1, x2), (y1, y2)) = mark
+    distances = [
+        distance((x1, y1), center),
+        distance((x2, y1), center),
+        distance((x1, y2), center),
+        distance((x2, y2), center),
+    ]
+    return sum(distances) / len(distances)
+
 
 def sort_marks(marks: list[list[(float, float)]]) -> list[((float, float), (float, float))]:
     min_x = min(x1 for ((x1, _), (_, _)) in marks)
     max_x = max(x2 for ((_, x2), (_, _)) in marks)
     min_y = min(y1 for ((_, _), (y1, _)) in marks)
     max_y = max(y2 for ((_, _), (_, y2)) in marks)
-    threshold_x = (min_x + max_x) / 2
-    threshold_y = (min_y + max_y) / 2
+    center_x = (min_x + max_x) / 2
+    center_y = (min_y + max_y) / 2
+    center = (center_x, center_y)
 
-    top_left = [((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks
-                if x2 < threshold_x * 1.1 and y2 < threshold_y * 0.9]
-    top_right = [((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks
-                 if x1 > threshold_x * 0.9 and y2 < threshold_y * 0.9]
-    bottom_left = [((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks
-                   if x2 < threshold_x * 0.9 and y1 > threshold_y * 1.1]
-    bottom_right = [((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks
-                    if x1 > threshold_x * 1.1 and y1 > threshold_y * 1.1]
+    distances = [distance_mark(center, mark) for mark in marks]
+    distances.sort()
+    median_distance = distances[len(distances) // 2]
 
-    return [
-        top_left[0],
-        top_right[0],
-        bottom_left[0],
-        bottom_right[0]
-    ]
+    marks.sort(key=lambda mark: abs(median_distance - distance_mark((center_x, center_y), mark)))
+    marks = marks[0:4]
+
+    top_left = next(((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks if x2 < center_x and y2 < center_y)
+    top_right = next(((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks if x1 > center_x and y2 < center_y)
+    bottom_left = next(((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks if x2 < center_x and y1 > center_y)
+    bottom_right = next(((x1, x2), (y1, y2)) for ((x1, x2), (y1, y2)) in marks if x1 > center_x and y1 > center_y)
+
+    return [top_left, top_right, bottom_left, bottom_right]
 
 
 def process_candidates(candidates: list[list[(float, float)]]) -> list[(float, float)]:
@@ -187,24 +196,38 @@ def add_border(image: cv2.typing.MatLike):
 
 def find_marks(file: str) -> [(float, float), (float, float), (float, float), (float, float)]:
     scan = cv2.imread(file)
+    dbgScan = cv2.cvtColor(scan, cv2.COLOR_BGR2GRAY)
+    dbgScan = cv2.cvtColor(dbgScan, cv2.COLOR_GRAY2RGB)
+
     add_border(scan)
     candidates = find_contours(scan)
     contours_single = [cnt for cnt in candidates if prefilter_single(scan.shape, cnt)]
     contours_double = [cnt for cnt in candidates if prefilter_double(scan.shape, cnt)]
     shapes_single = [simplify_single(cnt) for cnt in contours_single]
     shapes_double = [simplify_double(cnt) for cnt in contours_double]
-    cv2.drawContours(scan, contours_single, -1, (0, 0, 255), 2)
-    cv2.drawContours(scan, contours_double, -1, (255, 0, 0), 2)
+
+    dbg = dbgScan.copy()
+    cv2.drawContours(dbg, contours_single, -1, (0, 0, 255), 2)
+    cv2.drawContours(dbg, contours_double, -1, (255, 0, 0), 2)
     for tri in shapes_single:
-        cv2.drawContours(scan, [numpy.intp(tri)], -1, (0, 255, 255), 2)
+        cv2.drawContours(dbg, [numpy.intp(tri)], -1, (0, 255, 255), 2)
     for rect in shapes_double:
-        cv2.drawContours(scan, [numpy.intp(rect)], -1, (0, 255, 255), 2)
-    cv2.imwrite("debug/contours_1.jpg", scan)
+        cv2.drawContours(dbg, [numpy.intp(rect)], -1, (0, 255, 255), 2)
+    cv2.imwrite("/home/janne/Desktop/debug/contours_1.jpg", dbg)
+
     marks = process_candidates(shapes_double + merge_clusters(shapes_single))
-    marks = sort_marks(marks)
+
+    dbg = dbgScan.copy()
     for ((x1, x2), (y1, y2)) in marks:
-        cv2.rectangle(scan, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
-    cv2.imwrite("debug/contours_2.jpg", scan)
+        cv2.rectangle(dbg, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
+    cv2.imwrite("/home/janne/Desktop/debug/contours_2.jpg", dbg)
+
+    marks = sort_marks(marks)
+
+    dbg = dbgScan.copy()
+    for ((x1, x2), (y1, y2)) in marks:
+        cv2.rectangle(dbg, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
+    cv2.imwrite("/home/janne/Desktop/debug/contours_3.jpg", dbg)
 
     return [
         to_mm(scan.shape, (avg(x1, x2), avg(y1, y2)))
@@ -227,8 +250,8 @@ def calculate_transform(
     marks = [(x * 296.7, y * 301) for (x, y) in marks]
     target = [(10, 10), (200, 10), (10, 287), (200, 287)]
     matrix, _ = cv2.estimateAffine2D(numpy.array(target), numpy.array(marks))
-    return (matrix[0][0], matrix[1][0], matrix[0][2],
-            matrix[0][1], matrix[1][1], matrix[1][2])
+    return (matrix[0][0], matrix[1][0], matrix[0][2]+0.5,
+            matrix[0][1], matrix[1][1], matrix[1][2]+0.5)
 
 
 def format_transform_matrix(matrix: (float, float, float, float, float, float)) -> str:
