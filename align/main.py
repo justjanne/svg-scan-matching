@@ -6,6 +6,7 @@ from xml.dom.minidom import parse
 import cv2
 import numpy
 
+DEBUGPATH = os.getenv("FCM_DEBUG_PATH")
 
 def close_enough(a, b):
     return min(a, b) / max(a, b) > 0.7
@@ -196,8 +197,9 @@ def add_border(image: cv2.typing.MatLike):
 
 def find_marks(file: str) -> [(float, float), (float, float), (float, float), (float, float)]:
     scan = cv2.imread(file)
-    dbgScan = cv2.cvtColor(scan, cv2.COLOR_BGR2GRAY)
-    dbgScan = cv2.cvtColor(dbgScan, cv2.COLOR_GRAY2RGB)
+    if DEBUGPATH != "":
+        dbgScan = cv2.cvtColor(scan, cv2.COLOR_BGR2GRAY)
+        dbgScan = cv2.cvtColor(dbgScan, cv2.COLOR_GRAY2RGB)
 
     add_border(scan)
     candidates = find_contours(scan)
@@ -206,28 +208,31 @@ def find_marks(file: str) -> [(float, float), (float, float), (float, float), (f
     shapes_single = [simplify_single(cnt) for cnt in contours_single]
     shapes_double = [simplify_double(cnt) for cnt in contours_double]
 
-    dbg = dbgScan.copy()
-    cv2.drawContours(dbg, contours_single, -1, (0, 0, 255), 2)
-    cv2.drawContours(dbg, contours_double, -1, (255, 0, 0), 2)
-    for tri in shapes_single:
-        cv2.drawContours(dbg, [numpy.intp(tri)], -1, (0, 255, 255), 2)
-    for rect in shapes_double:
-        cv2.drawContours(dbg, [numpy.intp(rect)], -1, (0, 255, 255), 2)
-    cv2.imwrite("/home/janne/Desktop/debug/contours_1.jpg", dbg)
+    if DEBUGPATH is not None:
+        dbg = dbgScan.copy()
+        cv2.drawContours(dbg, contours_single, -1, (0, 0, 255), 2)
+        cv2.drawContours(dbg, contours_double, -1, (255, 0, 0), 2)
+        for tri in shapes_single:
+            cv2.drawContours(dbg, [numpy.intp(tri)], -1, (0, 255, 255), 2)
+        for rect in shapes_double:
+            cv2.drawContours(dbg, [numpy.intp(rect)], -1, (0, 255, 255), 2)
+        cv2.imwrite(DEBUGPATH+"/contours_1.jpg", dbg)
 
     marks = process_candidates(shapes_double + merge_clusters(shapes_single))
 
-    dbg = dbgScan.copy()
-    for ((x1, x2), (y1, y2)) in marks:
-        cv2.rectangle(dbg, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
-    cv2.imwrite("/home/janne/Desktop/debug/contours_2.jpg", dbg)
+    if DEBUGPATH is not None:
+        dbg = dbgScan.copy()
+        for ((x1, x2), (y1, y2)) in marks:
+            cv2.rectangle(dbg, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
+        cv2.imwrite(DEBUGPATH+"/contours_2.jpg", dbg)
 
     marks = sort_marks(marks)
 
-    dbg = dbgScan.copy()
-    for ((x1, x2), (y1, y2)) in marks:
-        cv2.rectangle(dbg, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
-    cv2.imwrite("/home/janne/Desktop/debug/contours_3.jpg", dbg)
+    if DEBUGPATH is not None:
+        dbg = dbgScan.copy()
+        for ((x1, x2), (y1, y2)) in marks:
+            cv2.rectangle(dbg, numpy.intp((x1, y1)), numpy.intp((x2, y2)), (0, 255, 0), 2)
+        cv2.imwrite(DEBUGPATH + "/contours_3.jpg", dbg)
 
     return [
         to_mm(scan.shape, (avg(x1, x2), avg(y1, y2)))

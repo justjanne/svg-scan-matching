@@ -16,17 +16,26 @@ mkdir "$WORKDIR"
 
 (cd align; pipenv run python main.py "$INPUT" "$SCAN" "$WORKDIR/align.svg")
 cd "$WORKDIR"
+
 ("$PREPROCESS" align.svg preprocess-output.svg cut && \
   "$SVG_TO_JSON" preprocess-output.svg preprocess-output.json && \
   "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut.fcm") || true
-rm "$WORKDIR"/preprocess-* || true
+if [ -z "$FCM_DEBUG_PATH" ]; then
+  rm "$WORKDIR"/preprocess-* || true
+fi
+
 ("$PREPROCESS" align.svg preprocess-output.svg cut_kiss && \
   "$SVG_TO_JSON" preprocess-output.svg preprocess-output.json && \
   "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut_kiss.fcm") || true
-rm "$WORKDIR"/preprocess-* || true
+if [ -z "$FCM_DEBUG_PATH" ]; then
+  rm "$WORKDIR"/preprocess-* || true
+fi
+
 ("$PREPROCESS" align.svg preprocess-output.svg cut_die && \
   "$SVG_TO_JSON" preprocess-output.svg preprocess-output.json && \
   "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut_die.fcm") || true
-rm "$WORKDIR"/preprocess-* || true
-rm "$WORKDIR/align.svg"
+if [ -z "$FCM_DEBUG_PATH" ]; then
+  rm "$WORKDIR"/preprocess-* || true
+  rm "$WORKDIR/align.svg"
+fi
 rmdir "$WORKDIR"
