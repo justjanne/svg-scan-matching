@@ -3,6 +3,7 @@ import sys
 from typing import Sequence
 from xml.dom.minidom import parse
 
+import os
 import cv2
 import numpy
 

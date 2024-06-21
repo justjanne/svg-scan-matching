@@ -20,21 +20,21 @@ cd "$WORKDIR"
 ("$PREPROCESS" align.svg preprocess-output.svg cut && \
   "$SVG_TO_JSON" preprocess-output.svg preprocess-output.json && \
   "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut.fcm") || true
-if [ -z "$FCM_DEBUG_PATH" ]; then
+if [ -z "${FCM_DEBUG_PATH:-}" ]; then
   rm "$WORKDIR"/preprocess-* || true
 fi
 
 ("$PREPROCESS" align.svg preprocess-output.svg cut_kiss && \
   "$SVG_TO_JSON" preprocess-output.svg preprocess-output.json && \
   "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut_kiss.fcm") || true
-if [ -z "$FCM_DEBUG_PATH" ]; then
+if [ -z "${FCM_DEBUG_PATH:-}" ]; then
   rm "$WORKDIR"/preprocess-* || true
 fi
 
 ("$PREPROCESS" align.svg preprocess-output.svg cut_die && \
   "$SVG_TO_JSON" preprocess-output.svg preprocess-output.json && \
   "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut_die.fcm") || true
-if [ -z "$FCM_DEBUG_PATH" ]; then
+if [ -z "${FCM_DEBUG_PATH:-}" ]; then
   rm "$WORKDIR"/preprocess-* || true
   rm "$WORKDIR/align.svg"
 fi
