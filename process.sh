@@ -22,6 +22,9 @@ cd "$WORKDIR"
   "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut.fcm") || true
 if [ -z "${FCM_DEBUG_PATH:-}" ]; then
   rm "$WORKDIR"/preprocess-* || true
+else
+  mkdir "$FCM_DEBUG_PATH"/preprocess-cut
+  mv "$WORKDIR"/preprocess-* "$FCM_DEBUG_PATH"/preprocess-cut/
 fi
 
 ("$PREPROCESS" align.svg preprocess-output.svg cut_kiss && \
@@ -29,6 +32,9 @@ fi
   "$JSON_TO_FCM" preprocess-output.json "$(dirname "$INPUT")/$(basename "$INPUT" .svg)_cut_kiss.fcm") || true
 if [ -z "${FCM_DEBUG_PATH:-}" ]; then
   rm "$WORKDIR"/preprocess-* || true
+else
+  mkdir "$FCM_DEBUG_PATH"/preprocess-cut-kiss
+  mv "$WORKDIR"/preprocess-* "$FCM_DEBUG_PATH"/preprocess-cut-kiss/
 fi
 
 ("$PREPROCESS" align.svg preprocess-output.svg cut_die && \
@@ -37,5 +43,9 @@ fi
 if [ -z "${FCM_DEBUG_PATH:-}" ]; then
   rm "$WORKDIR"/preprocess-* || true
   rm "$WORKDIR/align.svg"
+else
+  mkdir "$FCM_DEBUG_PATH"/preprocess-cut-die
+  mv "$WORKDIR"/preprocess-* "$FCM_DEBUG_PATH"/preprocess-cut-die/
+  mv "$WORKDIR"/align.svg "$FCM_DEBUG_PATH"/
 fi
 rmdir "$WORKDIR"
