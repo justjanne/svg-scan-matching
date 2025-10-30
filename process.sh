@@ -14,7 +14,7 @@ JSON_TO_FCM="$(realpath "json_to_fcm/target/release/fcm-converter")"
 WORKDIR="/tmp/svgalign-$(uuidgen)"
 mkdir "$WORKDIR"
 
-(cd align; pipenv run python main.py "$INPUT" "$SCAN" "$WORKDIR/align.svg")
+(cd align; uv run main.py "$INPUT" "$SCAN" "$WORKDIR/align.svg")
 cd "$WORKDIR"
 
 ("$PREPROCESS" align.svg preprocess-output.svg cut && \
