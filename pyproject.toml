@@ -7,6 +7,11 @@ authors = [
     { name = "Janne Mareike Koschinski", email = "mail@justjanne.de" }
 ]
 requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
 dependencies = [
     "numpy>=2.2.6",
     "opencv-python>=4.12.0.88",
@@ -14,17 +19,14 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-    "hatchling>=1.27.0",
-    "pytest>=9.0.1",
-]
+dev = ["pytest>=9.0.1"]
 
 [project.scripts]
 scanalign = "scanalign:main"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["maturin>=1.10,<2.0"]
+build-backend = "maturin"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/detect"]
+[tool.maturin]
+module-name = "scanalign.fcmconv"
