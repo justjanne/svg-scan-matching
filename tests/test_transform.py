@@ -1,8 +1,7 @@
 import os
 
-from detect.detection import detect_registration_marks
-from transform.parse import parse_svg
-from transform.util import patch_viewbox
+from scanalign.transform.parse import parse_svg
+from scanalign.transform.util import patch_viewbox
 
 patch_viewbox()
 

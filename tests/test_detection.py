@@ -1,6 +1,6 @@
 import os
 
-from detect.detection import detect_registration_marks
+from scanalign.detect.detection import detect_registration_marks
 
 
 def test_detect_registration_marks():
