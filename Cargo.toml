@@ -8,4 +8,5 @@ name = "scanalign"
 crate-type = ["cdylib"]
 
 [dependencies]
+fcmlib = "0.1.0"
 pyo3 = "0.27.0"
