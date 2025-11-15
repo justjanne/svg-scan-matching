@@ -13,6 +13,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = [
+    "maturin>=1.10.1",
     "numpy>=2.2.6",
     "opencv-python>=4.12.0.88",
     "svgelements>=1.9.6",

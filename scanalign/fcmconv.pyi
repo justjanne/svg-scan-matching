@@ -19,6 +19,9 @@ class FcmFile:
 
     def write(self, file: str) -> Optional[str]: ...
 
+    @classmethod
+    def read(cls, file: str) -> FcmFile: ...
+
 
 class FileHeader:
     variant: FileVariant
@@ -57,17 +60,17 @@ class FileVariant(enum.Enum):
 
 
 class Generator:
-    class App:
+    class App(Generator):
         version: int
 
         def __new__(cls, version: int): ...
 
-    class Web:
+    class Web(Generator):
         version: int
 
         def __new__(cls, version: int): ...
 
-    class Device:
+    class Device(Generator):
         model: int
         version: int
 
@@ -180,12 +183,12 @@ class PathShape:
 
 
 class Outline:
-    class Line:
+    class Line(Outline):
         segments: list[Point]
 
         def __new__(cls, segments: list[Point]): ...
 
-    class Bezier:
+    class Bezier(Outline):
         segments: list[Segment]
 
         def __new__(cls, segments: list[Segment]): ...

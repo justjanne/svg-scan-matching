@@ -2,10 +2,12 @@ use pyo3::prelude::*;
 
 #[pymodule]
 mod fcmconv {
+    use pyo3::exceptions::PyValueError;
     use pyo3::prelude::*;
     use pyo3::types::PyBytes;
+    use std::ops::Deref;
 
-    #[pyclass(subclass, get_all, immutable_type)]
+    #[pyclass(subclass, get_all, immutable_type, str)]
     #[derive(FromPyObject)]
     struct FcmFile {
         pub header: Py<FileHeader>,
@@ -31,6 +33,13 @@ mod fcmconv {
                 Ok(None)
             }
         }
+
+        #[staticmethod]
+        fn read(file: String, py: Python<'_>) -> Option<Py<FcmFile>> {
+            fcmlib::FcmFile::from_file(file)
+                .ok()
+                .and_then(|it| FcmFile::from_model(&it, py).ok())
+        }
     }
 
     impl FcmFile {
@@ -48,9 +57,46 @@ mod fcmconv {
                 },
             }
         }
+
+        fn from_model(model: &fcmlib::FcmFile, py: Python<'_>) -> PyResult<Py<FcmFile>> {
+            Py::new(
+                py,
+                FcmFile {
+                    header: FileHeader::from_model(&model.file_header, py)?,
+                    cut: CutData::from_model(&model.cut_data, py)?,
+                    pieces: model
+                        .piece_table
+                        .pieces
+                        .iter()
+                        .map(|(_, it)| Piece::from_model(it, py))
+                        .collect::<PyResult<Vec<Py<Piece>>>>()?,
+                },
+            )
+        }
     }
 
-    #[pyclass(subclass, get_all, immutable_type)]
+    impl std::fmt::Display for FcmFile {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Python::attach(|py| {
+                let header = self.header.borrow(py).to_string();
+                let cut = self.cut.borrow(py).to_string();
+                let pieces = self
+                    .pieces
+                    .iter()
+                    .map(|it| it.borrow(py).to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                write!(
+                    f,
+                    "FcmFile(header={}, cut={}, pieces=[{}])",
+                    header, cut, pieces
+                )
+            })
+        }
+    }
+
+    #[pyclass(subclass, get_all, immutable_type, str)]
     #[derive(FromPyObject, Debug)]
     struct FileHeader {
         pub variant: Py<FileVariant>,
@@ -118,9 +164,65 @@ mod fcmconv {
                 print_to_cut: self.print_to_cut,
             }
         }
+
+        fn from_model(model: &fcmlib::FileHeader, py: Python<'_>) -> PyResult<Py<FileHeader>> {
+            Py::new(
+                py,
+                FileHeader {
+                    variant: FileVariant::from_model(&model.variant, py)?,
+                    version: model.version.clone(),
+                    content_id: model.content_id,
+                    short_name: model.short_name.clone(),
+                    long_name: model.long_name.clone(),
+                    author_name: model.author_name.clone(),
+                    copyright: model.copyright.clone(),
+                    thumbnail_block_size_width: model.thumbnail_block_size_height,
+                    thumbnail_block_size_height: model.thumbnail_block_size_width,
+                    thumbnail: PyBytes::new(py, model.thumbnail.as_slice()).unbind(),
+                    generator: Generator::from_model(&model.generator, py)?,
+                    print_to_cut: model.print_to_cut,
+                },
+            )
+        }
     }
 
-    #[pyclass(eq)]
+    impl std::fmt::Display for FileHeader {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Python::attach(|py| {
+                let variant = self.variant.borrow(py).to_string();
+                let generator = self.generator.borrow(py).to_string();
+                let thumbnail = self.thumbnail.as_bytes(py).len();
+                let print_to_cut = self
+                    .print_to_cut
+                    .as_ref()
+                    .map(|it| it.to_string())
+                    .unwrap_or("None".to_string());
+
+                write!(
+                    f,
+                    "FileHeader(variant={}, version=\"{}\", content_id={}, \
+                 short_name=\"{}\", long_name=\"{}\", author_name=\"{}\", \
+                 copyright=\"{}\", thumbnail_block_size_width={}, \
+                 thumbnail_block_size_height={}, thumbnail=<bytes len={}>, \
+                 generator={}, print_to_cut={})",
+                    variant,
+                    self.version,
+                    self.content_id,
+                    self.short_name,
+                    self.long_name,
+                    self.author_name,
+                    self.copyright,
+                    self.thumbnail_block_size_width,
+                    self.thumbnail_block_size_height,
+                    thumbnail,
+                    generator,
+                    print_to_cut
+                )
+            })
+        }
+    }
+
+    #[pyclass(eq, str)]
     #[derive(PartialEq, Debug, Clone)]
     enum Generator {
         #[pyo3(constructor = (version))]
@@ -139,9 +241,39 @@ mod fcmconv {
                 Generator::Device { model, version } => fcmlib::Generator::Device(*model, *version),
             }
         }
+
+        fn from_model(model: &fcmlib::Generator, py: Python<'_>) -> PyResult<Py<Generator>> {
+            Py::new(
+                py,
+                match model {
+                    fcmlib::Generator::App(version) => Generator::App { version: *version },
+                    fcmlib::Generator::Web(version) => Generator::Web { version: *version },
+                    fcmlib::Generator::Device(model, version) => Generator::Device {
+                        model: *model,
+                        version: *version,
+                    },
+                },
+            )
+        }
     }
 
-    #[pyclass(eq, eq_int)]
+    impl std::fmt::Display for Generator {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Generator::App { version } => {
+                    write!(f, "Generator::App(version={})", version)
+                }
+                Generator::Web { version } => {
+                    write!(f, "Generator::Web(version={})", version)
+                }
+                Generator::Device { model, version } => {
+                    write!(f, "Generator::Device(model={}, version={})", model, version)
+                }
+            }
+        }
+    }
+
+    #[pyclass(eq, eq_int, str)]
     #[derive(PartialEq, Debug, Clone)]
     enum FileVariant {
         FCM,
@@ -155,9 +287,30 @@ mod fcmconv {
                 FileVariant::VCM => fcmlib::FileVariant::VCM,
             }
         }
+
+        fn from_model(model: &fcmlib::FileVariant, py: Python<'_>) -> PyResult<Py<FileVariant>> {
+            Py::new(
+                py,
+                match model {
+                    fcmlib::FileVariant::FCM => FileVariant::FCM,
+                    fcmlib::FileVariant::VCM => FileVariant::VCM,
+                },
+            )
+        }
     }
 
-    #[pyclass(subclass, get_all, immutable_type)]
+    impl std::fmt::Display for FileVariant {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let s = match self {
+                FileVariant::FCM => "FCM",
+                FileVariant::VCM => "VCM",
+            };
+
+            write!(f, "{s}")
+        }
+    }
+
+    #[pyclass(subclass, get_all, immutable_type, str)]
     #[derive(FromPyObject, Debug)]
     struct CutData {
         pub file_type: Py<FileType>,
@@ -201,9 +354,51 @@ mod fcmconv {
                 alignment: self.alignment.as_ref().map(|it| it.borrow(py).to_model(py)),
             }
         }
+
+        fn from_model(model: &fcmlib::CutData, py: Python<'_>) -> PyResult<Py<CutData>> {
+            let value = CutData {
+                file_type: FileType::from_model(&model.file_type, py)?,
+                mat_id: model.mat_id,
+                cut_width: model.cut_width,
+                cut_height: model.cut_height,
+                seam_allowance_width: model.seam_allowance_width,
+                alignment: model
+                    .alignment
+                    .as_ref()
+                    .map(|it| AlignmentData::from_model(it, py))
+                    .transpose()?,
+            };
+            Py::new(py, value)
+        }
     }
 
-    #[pyclass(eq, eq_int)]
+    impl std::fmt::Display for CutData {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Python::attach(|py| {
+                let file_type = self.file_type.borrow(py).to_string();
+
+                let alignment = self
+                    .alignment
+                    .as_ref()
+                    .map(|it| it.borrow(py).to_string())
+                    .unwrap_or("None".to_string());
+
+                write!(
+                    f,
+                    "CutData(file_type={}, mat_id={}, cut_width={}, cut_height={}, \
+                 seam_allowance_width={}, alignment={})",
+                    file_type,
+                    self.mat_id,
+                    self.cut_width,
+                    self.cut_height,
+                    self.seam_allowance_width,
+                    alignment
+                )
+            })
+        }
+    }
+
+    #[pyclass(eq, eq_int, str)]
     #[derive(PartialEq, Debug, Clone)]
     enum FileType {
         Cut,
@@ -217,9 +412,30 @@ mod fcmconv {
                 FileType::PrintAndCut => fcmlib::FileType::PrintAndCut,
             }
         }
+
+        fn from_model(model: &fcmlib::FileType, py: Python<'_>) -> PyResult<Py<FileType>> {
+            Py::new(
+                py,
+                match model {
+                    fcmlib::FileType::Cut => FileType::Cut,
+                    fcmlib::FileType::PrintAndCut => FileType::PrintAndCut,
+                },
+            )
+        }
     }
 
-    #[pyclass(subclass, get_all, immutable_type)]
+    impl std::fmt::Display for FileType {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let s = match self {
+                FileType::Cut => "Cut",
+                FileType::PrintAndCut => "PrintAndCut",
+            };
+
+            write!(f, "{s}")
+        }
+    }
+
+    #[pyclass(subclass, get_all, immutable_type, str)]
     #[derive(FromPyObject, Debug)]
     struct AlignmentData {
         pub needed: bool,
@@ -245,9 +461,45 @@ mod fcmconv {
                     .collect(),
             }
         }
+
+        fn from_model(
+            model: &fcmlib::AlignmentData,
+            py: Python<'_>,
+        ) -> PyResult<Py<AlignmentData>> {
+            Py::new(
+                py,
+                AlignmentData {
+                    needed: model.needed,
+                    marks: model
+                        .marks
+                        .iter()
+                        .map(|it| Point::from_model(&it, py))
+                        .collect::<PyResult<Vec<Py<Point>>>>()?,
+                },
+            )
+        }
     }
 
-    #[pyclass(subclass, get_all, immutable_type)]
+    impl std::fmt::Display for AlignmentData {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Python::attach(|py| {
+                let marks = self
+                    .marks
+                    .iter()
+                    .map(|m| m.borrow(py).to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                write!(
+                    f,
+                    "AlignmentData(needed={}, marks=[{}])",
+                    self.needed, marks
+                )
+            })
+        }
+    }
+
+    #[pyclass(subclass, get_all, immutable_type, str)]
     #[derive(FromPyObject, Debug)]
     struct Piece {
         pub width: u32,
@@ -307,9 +559,74 @@ mod fcmconv {
                     .collect(),
             }
         }
+
+        fn from_model(model: &fcmlib::Piece, py: Python<'_>) -> PyResult<Py<Piece>> {
+            Py::new(
+                py,
+                Piece {
+                    width: model.width,
+                    height: model.height,
+                    transform: model.transform,
+                    expansion_limit_value: model.expansion_limit_value,
+                    reduction_limit_value: model.reduction_limit_value,
+                    restriction_flags: model
+                        .restriction_flags
+                        .iter()
+                        .map(|it| PieceRestrictions::from_model(it, py))
+                        .collect::<PyResult<Vec<Py<PieceRestrictions>>>>()?,
+                    label: model.label.clone(),
+                    paths: model
+                        .paths
+                        .iter()
+                        .map(|it| Path::from_model(it, py))
+                        .collect::<PyResult<Vec<Py<Path>>>>()?,
+                },
+            )
+        }
     }
 
-    #[pyclass(eq, eq_int)]
+    impl std::fmt::Display for Piece {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Python::attach(|py| {
+                let restriction_flags = self
+                    .restriction_flags
+                    .iter()
+                    .map(|r| r.borrow(py).to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                let transform = self
+                    .transform
+                    .as_ref()
+                    .map(|(a, b, c, d, e, f)| format!("({}, {}, {}, {}, {}, {})", a, b, c, d, e, f))
+                    .unwrap_or("None".to_string());
+
+                let paths = self
+                    .paths
+                    .iter()
+                    .map(|p| p.borrow(py).to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                write!(
+                    f,
+                    "Piece(width={}, height={}, transform={}, \
+                 expansion_limit_value={}, reduction_limit_value={}, \
+                 restriction_flags=[{}], label=\"{}\", paths=[{}])",
+                    self.width,
+                    self.height,
+                    transform,
+                    self.expansion_limit_value,
+                    self.reduction_limit_value,
+                    restriction_flags,
+                    self.label,
+                    paths,
+                )
+            })
+        }
+    }
+
+    #[pyclass(eq, eq_int, str)]
     #[derive(PartialEq, Debug, Clone)]
     enum PieceRestrictions {
         LicenseDesign,
@@ -345,9 +662,60 @@ mod fcmconv {
                 }
             }
         }
+
+        fn from_model(
+            model: fcmlib::PieceRestrictions,
+            py: Python<'_>,
+        ) -> PyResult<Py<PieceRestrictions>> {
+            Py::new(
+                py,
+                match model {
+                    fcmlib::PieceRestrictions::LICENSE_DESIGN => PieceRestrictions::LicenseDesign,
+                    fcmlib::PieceRestrictions::SEAM_ALLOWANCE => PieceRestrictions::SeamAllowance,
+                    fcmlib::PieceRestrictions::PROHIBITION_OF_SEAM_ALLOWANCE_SETTING => {
+                        PieceRestrictions::ProhibitionOfSeamAllowanceSetting
+                    }
+                    fcmlib::PieceRestrictions::NO_ASPECT_RATIO_CHANGE_PROHIBITED => {
+                        PieceRestrictions::NoAspectRatioChangeProhibited
+                    }
+                    fcmlib::PieceRestrictions::JUDGE_BY_USING_PERFECT_MASK_AT_AUTO_LAYOUT => {
+                        PieceRestrictions::JudgeByUsingPerfectMaskAtAutoLayout
+                    }
+                    fcmlib::PieceRestrictions::TEST_PATTERN => PieceRestrictions::TestPattern,
+                    fcmlib::PieceRestrictions::PROHIBITION_OF_EDIT => {
+                        PieceRestrictions::ProhibitionOfEdit
+                    }
+                    fcmlib::PieceRestrictions::PROHIBITION_OF_TOOL => {
+                        PieceRestrictions::ProhibitionOfTool
+                    }
+                    _ => return Err(PyValueError::new_err("Invalid piece restrictions")),
+                },
+            )
+        }
     }
 
-    #[pyclass(subclass, get_all, immutable_type)]
+    impl std::fmt::Display for PieceRestrictions {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let s = match self {
+                PieceRestrictions::LicenseDesign => "LicenseDesign",
+                PieceRestrictions::SeamAllowance => "SeamAllowance",
+                PieceRestrictions::ProhibitionOfSeamAllowanceSetting => {
+                    "ProhibitionOfSeamAllowanceSetting"
+                }
+                PieceRestrictions::NoAspectRatioChangeProhibited => "NoAspectRatioChangeProhibited",
+                PieceRestrictions::JudgeByUsingPerfectMaskAtAutoLayout => {
+                    "JudgeByUsingPerfectMaskAtAutoLayout"
+                }
+                PieceRestrictions::TestPattern => "TestPattern",
+                PieceRestrictions::ProhibitionOfEdit => "ProhibitionOfEdit",
+                PieceRestrictions::ProhibitionOfTool => "ProhibitionOfTool",
+            };
+
+            write!(f, "{s}")
+        }
+    }
+
+    #[pyclass(subclass, get_all, immutable_type, str)]
     #[derive(FromPyObject, Debug)]
     struct Path {
         pub tool: Vec<Py<PathTool>>,
@@ -389,9 +757,70 @@ mod fcmconv {
                     .collect(),
             }
         }
+
+        fn from_model(model: &fcmlib::Path, py: Python<'_>) -> PyResult<Py<Path>> {
+            Py::new(
+                py,
+                Path {
+                    tool: model
+                        .tool
+                        .iter()
+                        .map(|it| PathTool::from_model(it, py))
+                        .collect::<PyResult<Vec<Py<PathTool>>>>()?,
+                    shape: model
+                        .shape
+                        .as_ref()
+                        .map(|it| PathShape::from_model(it, py))
+                        .transpose()?,
+                    rhinestone_diameter: model.rhinestone_diameter,
+                    rhinestones: model
+                        .rhinestones
+                        .iter()
+                        .map(|it| Point::from_model(it, py))
+                        .collect::<PyResult<Vec<Py<Point>>>>()?,
+                },
+            )
+        }
     }
 
-    #[pyclass(eq, eq_int)]
+    impl std::fmt::Display for Path {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Python::attach(|py| {
+                let tool = self
+                    .tool
+                    .iter()
+                    .map(|t| t.borrow(py).to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                let shape = self
+                    .shape
+                    .as_ref()
+                    .map(|it| it.borrow(py).to_string())
+                    .unwrap_or("None".to_string());
+
+                let rhinestone_diameter = self
+                    .rhinestone_diameter
+                    .map(|d| d.to_string())
+                    .unwrap_or("None".to_string());
+
+                let rhinestones = self
+                    .rhinestones
+                    .iter()
+                    .map(|p| p.borrow(py).to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                write!(
+                    f,
+                    "Path(tool=[{}], shape={}, rhinestone_diameter={}, rhinestones=[{}])",
+                    tool, shape, rhinestone_diameter, rhinestones
+                )
+            })
+        }
+    }
+
+    #[pyclass(eq, eq_int, str)]
     #[derive(PartialEq, Debug, Clone)]
     enum PathTool {
         PathOpen,
@@ -423,9 +852,49 @@ mod fcmconv {
                 PathTool::ToolPerforating => fcmlib::PathTool::TOOL_PERFORATING,
             }
         }
+
+        fn from_model(model: fcmlib::PathTool, py: Python<'_>) -> PyResult<Py<PathTool>> {
+            Py::new(
+                py,
+                match model {
+                    fcmlib::PathTool::PATH_OPEN => PathTool::PathOpen,
+                    fcmlib::PathTool::TOOL_CUT => PathTool::ToolCut,
+                    fcmlib::PathTool::TOOL_DRAW => PathTool::ToolDraw,
+                    fcmlib::PathTool::SEAM_ALLOWANCE => PathTool::SeamAllowance,
+                    fcmlib::PathTool::TOOL_RHINESTONE => PathTool::ToolRhinestone,
+                    fcmlib::PathTool::FILL => PathTool::Fill,
+                    fcmlib::PathTool::AUTO_ALIGN => PathTool::AutoAlign,
+                    fcmlib::PathTool::TOOL_DRAW_ONLY => PathTool::ToolDrawOnly,
+                    fcmlib::PathTool::TOOL_EMBOSS => PathTool::ToolEmboss,
+                    fcmlib::PathTool::TOOL_FOIL => PathTool::ToolFoil,
+                    fcmlib::PathTool::TOOL_PERFORATING => PathTool::ToolPerforating,
+                    _ => return Err(PyValueError::new_err("Invalid piece restrictions")),
+                },
+            )
+        }
     }
 
-    #[pyclass(subclass, get_all, immutable_type)]
+    impl std::fmt::Display for PathTool {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let s = match self {
+                PathTool::PathOpen => "PathOpen",
+                PathTool::ToolCut => "ToolCut",
+                PathTool::ToolDraw => "ToolDraw",
+                PathTool::SeamAllowance => "SeamAllowance",
+                PathTool::ToolRhinestone => "ToolRhinestone",
+                PathTool::Fill => "Fill",
+                PathTool::AutoAlign => "AutoAlign",
+                PathTool::ToolDrawOnly => "ToolDrawOnly",
+                PathTool::ToolEmboss => "ToolEmboss",
+                PathTool::ToolFoil => "ToolFoil",
+                PathTool::ToolPerforating => "ToolPerforating",
+            };
+
+            write!(f, "{s}")
+        }
+    }
+
+    #[pyclass(subclass, get_all, immutable_type, str)]
     #[derive(FromPyObject, Debug)]
     struct PathShape {
         pub start: Py<Point>,
@@ -451,9 +920,45 @@ mod fcmconv {
                     .collect(),
             }
         }
+
+        fn from_model(model: &fcmlib::PathShape, py: Python<'_>) -> PyResult<Py<PathShape>> {
+            Py::new(
+                py,
+                PathShape {
+                    start: Point::from_model(&model.start, py)?,
+                    outlines: model
+                        .outlines
+                        .iter()
+                        .map(|it| Outline::from_model(it, py))
+                        .collect::<PyResult<Vec<Py<Outline>>>>()?,
+                },
+            )
+        }
     }
 
-    #[pyclass]
+    impl std::fmt::Display for PathShape {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Python::attach(|py| {
+                let start = self.start.borrow(py);
+
+                let outlines = self
+                    .outlines
+                    .iter()
+                    .map(|it| it.borrow(py).to_string())
+                    .collect::<Vec<String>>()
+                    .join(", ");
+
+                write!(
+                    f,
+                    "PathShape(start={}, outlines=[{}])",
+                    start.deref(),
+                    outlines
+                )
+            })
+        }
+    }
+
+    #[pyclass(str)]
     #[derive(Debug)]
     enum Outline {
         #[pyo3(constructor = (segments))]
@@ -481,9 +986,58 @@ mod fcmconv {
                 ),
             }
         }
+
+        fn from_model(model: &fcmlib::Outline, py: Python<'_>) -> PyResult<Py<Outline>> {
+            Py::new(
+                py,
+                match model {
+                    fcmlib::Outline::Line(segments) => Outline::Line {
+                        segments: segments
+                            .iter()
+                            .map(|it| Point::from_model(&it.end, py))
+                            .collect::<PyResult<Vec<Py<Point>>>>()?,
+                    },
+                    fcmlib::Outline::Bezier(segments) => Outline::Bezier {
+                        segments: segments
+                            .iter()
+                            .map(|it| Segment::from_model(it, py))
+                            .collect::<PyResult<Vec<Py<Segment>>>>()?,
+                    },
+                },
+            )
+        }
     }
 
-    #[pyclass(subclass, get_all, immutable_type)]
+    impl std::fmt::Display for Outline {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Python::attach(|py| match self {
+                Outline::Line { segments } => {
+                    write!(
+                        f,
+                        "Outline.Line(segments=[{}])",
+                        segments
+                            .iter()
+                            .map(|it| it.borrow(py).to_string())
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    )
+                }
+                Outline::Bezier { segments } => {
+                    write!(
+                        f,
+                        "Outline.Bezier(segments={})",
+                        segments
+                            .iter()
+                            .map(|it| it.borrow(py).to_string())
+                            .collect::<Vec<String>>()
+                            .join(", ")
+                    )
+                }
+            })
+        }
+    }
+
+    #[pyclass(subclass, get_all, immutable_type, str)]
     #[derive(FromPyObject, Debug)]
     struct Segment {
         pub control1: Py<Point>,
@@ -511,9 +1065,38 @@ mod fcmconv {
                 end: self.end.borrow(py).to_model(),
             }
         }
+
+        fn from_model(model: &fcmlib::SegmentBezier, py: Python<'_>) -> PyResult<Py<Segment>> {
+            Py::new(
+                py,
+                Segment {
+                    control1: Point::from_model(&model.control1, py)?,
+                    control2: Point::from_model(&model.control2, py)?,
+                    end: Point::from_model(&model.end, py)?,
+                },
+            )
+        }
     }
 
-    #[pyclass(subclass, get_all, immutable_type)]
+    impl std::fmt::Display for Segment {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            Python::attach(|py| {
+                let c1 = self.control1.borrow(py);
+                let c2 = self.control2.borrow(py);
+                let end = self.end.borrow(py);
+
+                write!(
+                    f,
+                    "Segment(control1={}, control2={}, end={})",
+                    c1.deref(),
+                    c2.deref(),
+                    end.deref()
+                )
+            })
+        }
+    }
+
+    #[pyclass(subclass, get_all, immutable_type, str)]
     #[derive(FromPyObject, PartialEq, Eq, Debug)]
     struct Point {
         pub x: i32,
@@ -534,6 +1117,22 @@ mod fcmconv {
                 x: self.x,
                 y: self.y,
             }
+        }
+
+        fn from_model(model: &fcmlib::Point, py: Python<'_>) -> PyResult<Py<Point>> {
+            Py::new(
+                py,
+                Point {
+                    x: model.x,
+                    y: model.y,
+                },
+            )
+        }
+    }
+
+    impl std::fmt::Display for Point {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Point(x={}, y={})", self.x, self.y)
         }
     }
 }

@@ -116,3 +116,4 @@ if __name__ == "__main__":
     )
     os.makedirs("build/test", exist_ok=True)
     print(model.write("build/test/test.fcm"))
+    print(model.read("build/test/test.fcm"))
