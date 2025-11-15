@@ -3,7 +3,7 @@ from typing import Optional
 
 from svgelements import SVG
 
-from transform.transform import transform_file, transform_path
+from scanalign.transform.transform import transform_file, transform_path
 
 
 def parse_svg(filename: str, debug_dir: Optional[str] = None):
