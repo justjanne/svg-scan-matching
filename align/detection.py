@@ -1,6 +1,7 @@
 import os.path
 
 import cv2
+import numpy as np
 
 
 def detect_registration_marks(file: str, debug_dir: str | None = None):
@@ -16,10 +17,15 @@ def detect_registration_marks(file: str, debug_dir: str | None = None):
     candidates = [c for c in contours if match_contour(c)]
     marks = [process_contour(c) for c in candidates]
 
-    if debug_dir is not None:
+    if debug_dir:
         im_contours = im_scan
-        im_contours = cv2.drawContours(im_contours, contours, -1, (255, 0, 0), 3)
-        im_contours = cv2.drawContours(im_contours, candidates, -1, (0, 0, 255), 3)
+        im_contours = cv2.drawContours(im_contours, contours, -1, (255, 0, 0), 2)
+        im_contours = cv2.drawContours(im_contours, candidates, -1, (0, 0, 255), 2)
+        for candidate in candidates:
+            rect = cv2.minAreaRect(candidate)
+            box = cv2.boxPoints(rect)
+            box = np.intp(box)
+            im_contours = cv2.drawContours(im_contours, [box], -1, (255, 255, 0), 2)
         for mark in marks:
             im_contours = cv2.circle(im_contours, mark, 2, (0, 255, 0), 2)
             im_contours = cv2.circle(im_contours, mark, 60, (0, 255, 0), 2)
@@ -33,7 +39,7 @@ def detect_registration_marks(file: str, debug_dir: str | None = None):
 def to_percent(scan: cv2.typing.MatLike, point: (float, float)) -> (float, float):
     x, y = point
     height, width, _ = scan.shape
-    return x / width, y / height
+    return x * 1.0 / width, y * 1.0 / height
 
 
 def preprocess_image(im_scan: cv2.typing.MatLike) -> cv2.typing.MatLike:

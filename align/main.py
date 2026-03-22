@@ -9,6 +9,18 @@ import numpy
 
 import detection
 
+DEBUGPATH = os.getenv("FCM_DEBUG_PATH")
+
+CORRECTION_DATA = [(195.5, 193.0), (195.5, 3211.0), (2204.5, 193.0), (2204.5, 3211.0)]
+CORRECTION_WIDTH = 3504
+CORRECTION_HEIGHT = 3529
+
+def apply_correction(matrix, point):
+    x, y = point
+    corrected_x = x * matrix[0] + y * matrix[1] + matrix[2]
+    corrected_y = x * matrix[3] + y * matrix[4] + matrix[5]
+    return (corrected_x, corrected_y)
+
 def distance(point1, point2):
     x1, y1 = point1
     x2, y2 = point2
@@ -39,23 +51,14 @@ def sort_marks(marks: list[(float, float)]) -> list[(float, float)]:
     return [top_left, top_right, bottom_left, bottom_right]
 
 
-def apply_matrix(
-        value: (float, float),
-        matrix: (float, float, float, float, float, float)
-) -> (float, float):
-    x, y = value
-    a, c, e, b, d, f = matrix
-    return a * x + c * y + e, b * x + d * y + f
-
-
 def calculate_transform(
         marks: [(float, float), (float, float), (float, float), (float, float)],
 ) -> (float, float, float, float, float, float):
-    marks = [(x * 296.7, y * 301) for (x, y) in marks]
+    marks = [apply_correction(CORRECTION, mark) for mark in marks]
     target = [(10, 10), (200, 10), (10, 287), (200, 287)]
-    matrix, _ = cv2.estimateAffine2D(numpy.array(target), numpy.array(marks))
-    return (matrix[0][0], matrix[1][0], matrix[0][2]+0.5,
-            matrix[0][1], matrix[1][1], matrix[1][2]+0.5)
+    matrix, _ = cv2.estimateAffine2D(numpy.array(target), numpy.array(marks), method=cv2.LMEDS)
+    return (matrix[0][0], matrix[1][0], matrix[0][2],
+            matrix[0][1], matrix[1][1], matrix[1][2])
 
 
 def format_transform_matrix(matrix: (float, float, float, float, float, float)) -> str:
@@ -75,16 +78,28 @@ def generate_cut(source: str, target: str, transform: (float, float, float, floa
         wrapper.appendChild(node)
     document.appendChild(wrapper)
     with open(target, "w") as writer:
-        dom.writexml(writer, indent="  ", addindent="  ", newl="\n")
+        dom.writexml(writer)
 
 
 def process_cut(source: str, scan: str, out: str):
-    marks = sort_marks(detection.detect_registration_marks(scan))
+    marks = sort_marks(detection.detect_registration_marks(scan, DEBUGPATH))
     transform = calculate_transform(marks)
     generate_cut(source, out, transform)
 
 
+def calculate_correction():
+    marks = CORRECTION_DATA
+    marks = [(x / CORRECTION_WIDTH, y / CORRECTION_HEIGHT) for (x, y) in marks]
+    target = [(17, 17), (17, 274), (187, 17), (187, 274)]
+    matrix, _ = cv2.estimateAffine2D(numpy.array(marks), numpy.array(target), method=cv2.LMEDS)
+    return (float(matrix[0][0]), float(matrix[1][0]), float(matrix[0][2]),
+            float(matrix[0][1]), float(matrix[1][1]), float(matrix[1][2]))
+
+CORRECTION = calculate_correction()
+
+
 if __name__ == "__main__":
+    print(f"MAT CORRECTION: {CORRECTION}")
     args = sys.argv[1:]
     if len(args) == 3:
         process_cut(args[0], args[1], args[2])
