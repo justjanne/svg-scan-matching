@@ -134,22 +134,22 @@ def path_to_fcm(path: Path, offset: PointDto = PointDto(0, 0)) -> list[PathDto]:
                 outlines.append(OutlineLineDto(segments))
         elif command.type == DrawCommandType.MOVE:
             if len(outlines) != 0 and start is not None:
-                paths.append(PathDto(PathFlagsDto(open=True, tool_cut=True), start - offset, outlines))
-            start = point_to_fcm(command.arguments[0], command.arguments[1])
+                paths.append(PathDto(PathFlagsDto(open=True, tool_cut=True), start, outlines))
+            start = point_to_fcm(command.arguments[0], command.arguments[1]) - offset
             outlines = []
             segments = [SegmentLineDto(point_to_fcm(x, y) - offset) for (x, y) in list_window(command.arguments[2:], 2)]
             if len(segments) > 0:
                 outlines.append(OutlineLineDto(segments))
         elif command.type == DrawCommandType.CLOSE:
             if len(outlines) != 0 and start is not None:
-                outlines.append(OutlineLineDto([SegmentLineDto(start - offset)]))
-                paths.append(PathDto(PathFlagsDto(open=False, tool_cut=True), start - offset, outlines))
+                outlines.append(OutlineLineDto([SegmentLineDto(start)]))
+                paths.append(PathDto(PathFlagsDto(open=False, tool_cut=True), start, outlines))
             start = None
             outlines = []
         else:
             raise Exception("Unknown command: " + command.type)
     if len(outlines) != 0 and start is not None:
-        paths.append(PathDto(PathFlagsDto(open=True, tool_cut=True), start - offset, outlines))
+        paths.append(PathDto(PathFlagsDto(open=True, tool_cut=True), start, outlines))
     return paths
 
 def piece_to_fcm(piece: xml.dom.minidom.Node, label: str = "") -> PieceDto:
