@@ -3,6 +3,25 @@ import os.path
 import cv2
 import numpy as np
 
+expected_area = [0.5753084381815857, 0.5467924904648126, 0.45695676920198913, 0.4392252254528492]
+expected_perimeter = [8.475059958984831, 7.814769698333799, 7.913946687534231, 7.871244502984462]
+expected_hull_area = [2.1161309179050316, 2.104806760524752, 2.0988555232000397, 2.083789073763341]
+expected_hull_perimeter = [5.680899340025476, 5.672100244956982, 5.694527523537542, 5.677312418292794]
+expected_radius = [60.208072662353516, 60.25165557861328, 59.67002487182617, 59.634403228759766]
+
+def calculate_params(values):
+    min_val = min(values)
+    max_val = max(values)
+    std = (max_val + min_val) / 2
+    dev = (max_val - min_val)
+    return (std, dev)
+
+params_area = calculate_params(expected_area)
+params_perimeter = calculate_params(expected_perimeter)
+params_hull_area = calculate_params(expected_hull_area)
+params_hull_perimeter = calculate_params(expected_hull_perimeter)
+params_radius = calculate_params(expected_radius)
+
 
 def detect_registration_marks(file: str, debug_dir: str | None = None):
     im_scan = cv2.imread(file)
@@ -19,7 +38,6 @@ def detect_registration_marks(file: str, debug_dir: str | None = None):
 
     if debug_dir:
         im_contours = im_scan
-        im_contours = cv2.drawContours(im_contours, contours, -1, (255, 0, 0), 2)
         im_contours = cv2.drawContours(im_contours, candidates, -1, (0, 0, 255), 2)
         for candidate in candidates:
             rect = cv2.minAreaRect(candidate)
@@ -62,7 +80,9 @@ def preprocess_image(im_scan: cv2.typing.MatLike) -> cv2.typing.MatLike:
 
     _, im_threshold = cv2.threshold(im_grayscale, 127, 255, cv2.THRESH_BINARY)
     im_threshold = cv2.morphologyEx(im_threshold, cv2.MORPH_DILATE, kernel_denoise, iterations=3)
-    return im_threshold
+
+    im_preprocessed = cv2.bitwise_and(im_grayscale, im_threshold)
+    return im_preprocessed
 
 
 def process_contour(contour: cv2.typing.MatLike) -> cv2.typing.Point:
@@ -88,14 +108,19 @@ def match_contour(contour: cv2.typing.MatLike) -> bool:
     hull_area = cv2.contourArea(hull) / radius / radius
     hull_perimeter = cv2.arcLength(hull, True) / radius
 
-    match_area = match_value(area, 1.0, .16)
-    match_hull_area = match_value(hull_area, 2.26, .08)
-    match_perimeter = match_value(perimeter, 7.78, .06)
-    match_hull_perimeter = match_value(hull_perimeter, 5.78, .05)
-    match_radius = match_value(radius, 64, 0.1)
+    match_area = match_value(area, params_area)
+    match_perimeter = match_value(perimeter, params_perimeter)
 
-    return match_radius and match_hull_perimeter and match_perimeter and match_area and match_hull_area
+    match_hull_area = match_value(hull_area, params_hull_area)
+    match_hull_perimeter = match_value(hull_perimeter, params_hull_perimeter)
+    match_radius = match_value(radius, params_radius)
+
+    match = match_radius and match_hull_perimeter and match_perimeter and match_area and match_hull_area
+    if match:
+        print(f"area={area}, perimeter={perimeter}, hull_area={hull_area}, hull_perimeter={hull_perimeter}, radius={radius}")
+    return match
 
 
-def match_value(actual: float, expected: float, deviation: float) -> bool:
+def match_value(actual: float, params: (float, float)) -> bool:
+    expected, deviation = params
     return abs(actual - expected) < (expected * deviation)
