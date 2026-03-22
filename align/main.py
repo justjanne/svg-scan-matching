@@ -62,7 +62,7 @@ def calculate_transform(
 
 
 def format_transform_matrix(matrix: (float, float, float, float, float, float)) -> str:
-    return "matrix({0:.3f} {1:.3f} {3:.3f} {4:.3f} {2:.3f} {5:.3f})".format(
+    return "matrix({0:.5f} {1:.5f} {3:.5f} {4:.5f} {2:.5f} {5:.5f})".format(
         matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]
     )
 

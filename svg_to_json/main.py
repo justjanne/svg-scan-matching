@@ -24,11 +24,15 @@ class CustomJsonEncoder(json.JSONEncoder):
         return super().default(o)
 
 
-def point_to_fcm(x: float, y: float) -> PointDto:
-    return PointDto(int(round(x * 100)), int(round(y * 100)))
+def point_to_fcm(x: float, y: float, offset: (float, float) = (0.0, 0.0)) -> PointDto:
+    offset_x, offset_y = offset
+    return PointDto(
+        int(round((x - offset_x) * 100)),
+        int(round((y - offset_y) * 100))
+    )
 
 
-def path_to_fcm(path: Path, offset: PointDto = PointDto(0, 0)) -> list[PathDto]:
+def path_to_fcm(path: Path, offset: (float, float) = (0.0, 0.0)) -> list[PathDto]:
     paths = []
     outlines = []
     start: PointDto | None = None
@@ -42,9 +46,9 @@ def path_to_fcm(path: Path, offset: PointDto = PointDto(0, 0)) -> list[PathDto]:
                 last = outlines[-1].segments[-1].end
             segments = []
             for (c1x, c1y, c2x, c2y, x, y) in list_window(command.arguments, 6):
-                control1 = point_to_fcm(c1x, c1y) - offset
-                control2 = point_to_fcm(c2x, c2y) - offset
-                end = point_to_fcm(x, y) - offset
+                control1 = point_to_fcm(c1x, c1y, offset)
+                control2 = point_to_fcm(c2x, c2y, offset)
+                end = point_to_fcm(x, y, offset)
                 segments.append(SegmentBezierDto(
                     last + (control1 - last) * (2/3),
                     control2 + (control2 - control1) * (2/3),
@@ -71,8 +75,8 @@ def path_to_fcm(path: Path, offset: PointDto = PointDto(0, 0)) -> list[PathDto]:
                 raise Exception("unknown segment type")
             segments = []
             for (c2x, c2y, x, y) in list_window(command.arguments, 4):
-                control2 = point_to_fcm(c2x, c2y) - offset
-                end = point_to_fcm(x, y) - offset
+                control2 = point_to_fcm(c2x, c2y, offset)
+                end = point_to_fcm(x, y, offset)
                 segments.append(SegmentBezierDto(
                     last + (control1 - last) * (2/3),
                     control2 + (control2 - control1) * (2/3),
@@ -85,7 +89,7 @@ def path_to_fcm(path: Path, offset: PointDto = PointDto(0, 0)) -> list[PathDto]:
                 outlines.append(OutlineBezierDto(segments))
         elif command.type == DrawCommandType.BEZIER:
             segments = [SegmentBezierDto(
-                point_to_fcm(c1x, c1y) - offset, point_to_fcm(c2x, c2y) - offset, point_to_fcm(x, y) - offset
+                point_to_fcm(c1x, c1y, offset), point_to_fcm(c2x, c2y, offset), point_to_fcm(x, y, offset)
             ) for (c1x, c1y, c2x, c2y, x, y) in list_window(command.arguments, 6)]
             if len(segments) > 0:
                 outlines.append(OutlineBezierDto(segments))
@@ -103,8 +107,8 @@ def path_to_fcm(path: Path, offset: PointDto = PointDto(0, 0)) -> list[PathDto]:
                 raise Exception("unknown segment type")
             segments = []
             for (c2x, c2y, x, y) in list_window(command.arguments, 4):
-                control2 = point_to_fcm(c2x, c2y) - offset
-                end = point_to_fcm(x, y) - offset
+                control2 = point_to_fcm(c2x, c2y, offset)
+                end = point_to_fcm(x, y, offset)
                 segments.append(SegmentBezierDto(
                     control1, control2, end
                 ))
@@ -117,7 +121,7 @@ def path_to_fcm(path: Path, offset: PointDto = PointDto(0, 0)) -> list[PathDto]:
                 last = start
             else:
                 last = outlines[-1].segments[-1].end
-            segments = [SegmentLineDto(PointDto(last.x, int(round(y * 100)) - offset.y)) for y in command.arguments]
+            segments = [SegmentLineDto(PointDto(last.x, point_to_fcm(0, y, offset).y)) for y in command.arguments]
             if len(segments) > 0:
                 outlines.append(OutlineLineDto(segments))
         elif command.type == DrawCommandType.HORIZONTAL_LINE:
@@ -125,19 +129,19 @@ def path_to_fcm(path: Path, offset: PointDto = PointDto(0, 0)) -> list[PathDto]:
                 last = start
             else:
                 last = outlines[-1].segments[-1].end
-            segments = [SegmentLineDto(PointDto(int(round(x * 100)) - offset.x, last.y)) for x in command.arguments]
+            segments = [SegmentLineDto(PointDto(point_to_fcm(x, 0, offset).x, last.y)) for x in command.arguments]
             if len(segments) > 0:
                 outlines.append(OutlineLineDto(segments))
         elif command.type == DrawCommandType.LINE:
-            segments = [SegmentLineDto(point_to_fcm(x, y) - offset) for (x, y) in list_window(command.arguments, 2)]
+            segments = [SegmentLineDto(point_to_fcm(x, y, offset)) for (x, y) in list_window(command.arguments, 2)]
             if len(segments) > 0:
                 outlines.append(OutlineLineDto(segments))
         elif command.type == DrawCommandType.MOVE:
             if len(outlines) != 0 and start is not None:
                 paths.append(PathDto(PathFlagsDto(open=True, tool_cut=True), start, outlines))
-            start = point_to_fcm(command.arguments[0], command.arguments[1]) - offset
+            start = point_to_fcm(command.arguments[0], command.arguments[1], offset)
             outlines = []
-            segments = [SegmentLineDto(point_to_fcm(x, y) - offset) for (x, y) in list_window(command.arguments[2:], 2)]
+            segments = [SegmentLineDto(point_to_fcm(x, y, offset)) for (x, y) in list_window(command.arguments[2:], 2)]
             if len(segments) > 0:
                 outlines.append(OutlineLineDto(segments))
         elif command.type == DrawCommandType.CLOSE:
@@ -163,10 +167,11 @@ def piece_to_fcm(piece: xml.dom.minidom.Node, label: str = "") -> PieceDto:
     top_left = point_to_fcm(min_x, min_y)
     bottom_right = point_to_fcm(max_x, max_y)
     size = bottom_right - top_left
-    center = PointDto(
-        (top_left.x + bottom_right.x) // 2,
-        (top_left.y + bottom_right.y) // 2,
+    center = (
+        (min_x + max_x) / 2,
+        (min_y + max_y) / 2,
     )
+    print(center)
     paths = [fcm_path for path in paths for fcm_path in path_to_fcm(path, center)]
     paths.sort(key=lambda path: path.start.y)
     sorted_paths = [paths[0]]
@@ -176,7 +181,7 @@ def piece_to_fcm(piece: xml.dom.minidom.Node, label: str = "") -> PieceDto:
         p = min(paths, key=lambda el: math.sqrt(math.pow(last.x - el.start.x, 2) + math.pow((last.y - el.start.y) * 10, 2)))
         paths.remove(p)
         sorted_paths.append(p)
-    return PieceDto(size.x, size.y, 0, 0, (1.0, 0.0, 0.0, 1.0, float(center.x), float(center.y)), PieceFlagsDto(seam_allowance_locked=True), label, sorted_paths)
+    return PieceDto(size.x, size.y, 0, 0, (1.0, 0.0, 0.0, 1.0, center[0] * 100, center[1] * 100), PieceFlagsDto(seam_allowance_locked=True), label, sorted_paths)
 
 
 def extract_paths(filename: str) -> FileDto:
