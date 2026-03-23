@@ -17,7 +17,7 @@ CORRECTION_HEIGHT = 3529
 
 def apply_correction(matrix, point):
     x, y = point
-    corrected_x = x * matrix[0] + y * matrix[1] + matrix[2]
+    corrected_x = x * matrix[0] + y * matrix[1] + matrix[2] + 0.25
     corrected_y = x * matrix[3] + y * matrix[4] + matrix[5]
     return (corrected_x, corrected_y)
 
