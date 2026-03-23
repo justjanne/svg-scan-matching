@@ -15,13 +15,19 @@ CORRECTION_DATA = [(111,114), (2354,110), (111,3362), (2355,3358)]
 CORRECTION_WIDTH = 3504
 CORRECTION_HEIGHT = 3529
 
+MAT_WIDTH = 296.7
+MAT_HEIGHT = 301
+
 REGISTRATION_MARKS = [(10, 10), (200, 10), (10, 287), (200, 287)]
 
-def apply_correction(matrix, point):
+def apply_correction(point):
     x, y = point
-    corrected_x = float(x) * matrix[0] + float(y) * matrix[1] + matrix[2]
-    corrected_y = float(x) * matrix[3] + float(y) * matrix[4] + matrix[5]
-    return (corrected_x, corrected_y)
+    points = cv2.transform(
+        numpy.array([numpy.array([numpy.array([x, y], dtype=numpy.float32)])]),
+        CORRECTION,
+    )
+    x, y = points[0][0]
+    return (float(x), float(y))
 
 def distance(point1, point2):
     x1, y1 = point1
@@ -55,24 +61,20 @@ def sort_marks(marks: list[(float, float)]) -> list[(float, float)]:
 
 def calculate_transform(
         marks: [(float, float), (float, float), (float, float), (float, float)],
-) -> (float, float, float, float, float, float):
-    marks = [apply_correction(CORRECTION, mark) for mark in marks]
-    #matrix, _ = cv2.estimateAffine2D(numpy.array(REGISTRATION_MARKS), numpy.array(marks), confidence=0.99999, maxIters=20000, refineIters=0)
-    matrix = cv2.getAffineTransform(
-        numpy.array([numpy.array(REGISTRATION_MARKS[1], dtype=numpy.float32), numpy.array(REGISTRATION_MARKS[2], dtype=numpy.float32),numpy.array(REGISTRATION_MARKS[3], dtype=numpy.float32)]),
-        numpy.array([numpy.array(marks[1], dtype=numpy.float32), numpy.array(marks[2], dtype=numpy.float32),numpy.array(marks[3], dtype=numpy.float32)]),
-    )
-    return (float(matrix[0][0]), float(matrix[1][0]), float(matrix[0][2]),
-            float(matrix[0][1]), float(matrix[1][1]), float(matrix[1][2]))
+) -> cv2.typing.MatLike:
+    marks = [apply_correction(mark) for mark in marks]
+    matrix, _ = cv2.estimateAffine2D(numpy.array(REGISTRATION_MARKS), numpy.array(marks), confidence=0.99999, maxIters=20000, refineIters=0)
+    return matrix
 
 
-def format_transform_matrix(matrix: (float, float, float, float, float, float)) -> str:
+def format_transform_matrix(matrix: cv2.typing.MatLike) -> str:
     return "matrix({0:.5f} {1:.5f} {3:.5f} {4:.5f} {2:.5f} {5:.5f})".format(
-        matrix[0], matrix[1], matrix[2], matrix[3], matrix[4], matrix[5]
+        float(matrix[0][0]), float(matrix[1][0]), float(matrix[0][2]),
+        float(matrix[0][1]), float(matrix[1][1]), float(matrix[1][2]),
     )
 
 
-def generate_cut(source: str, target: str, transform: (float, float, float, float, float, float)):
+def generate_cut(source: str, target: str, transform: cv2.typing.MatLike):
     dom = parse(source)
     document = dom.firstChild
     wrapper = dom.createElement("g")
@@ -91,29 +93,17 @@ def process_cut(source: str, scan: str, out: str):
     transform = calculate_transform(marks)
     generate_cut(source, out, transform)
 
-def getAffine(marks, indices):
-    index1, index2, index3 = indices
-    return cv2.getAffineTransform(
-        numpy.array([numpy.array(marks[index1], dtype=numpy.float32), numpy.array(marks[index2], dtype=numpy.float32), numpy.array(marks[index3], dtype=numpy.float32)]),
-        numpy.array([numpy.array(REGISTRATION_MARKS[index1], dtype=numpy.float32), numpy.array(REGISTRATION_MARKS[index2], dtype=numpy.float32), numpy.array(REGISTRATION_MARKS[index3], dtype=numpy.float32)]),
-    )
-
 
 def calculate_correction():
     marks = CORRECTION_DATA
-    marks = [(float(x) / CORRECTION_WIDTH, float(y) / CORRECTION_HEIGHT) for (x, y) in marks]
+    marks = [(x / CORRECTION_WIDTH, y / CORRECTION_HEIGHT) for (x, y) in marks]
     matrix, _ = cv2.estimateAffine2D(numpy.array(marks), numpy.array(REGISTRATION_MARKS), confidence=0.99999, maxIters=20000, refineIters=100)
-
-    marks_scaled = [(x * 296.7, y * 301.0) for (x, y) in marks]
-    matrix_scaled, _ = cv2.estimateAffine2D(numpy.array(marks_scaled), numpy.array(REGISTRATION_MARKS), confidence=0.99999, maxIters=20000, refineIters=100)
-    correction_scaled = (float(matrix_scaled[0][0]), float(matrix_scaled[1][0]), float(matrix_scaled[0][2]),
-            float(matrix_scaled[0][1]), float(matrix_scaled[1][1]), float(matrix_scaled[1][2]))
-    print(f"MAT CORRECTION: {correction_scaled}")
-    return (float(matrix[0][0]), float(matrix[1][0]), float(matrix[0][2]),
-            float(matrix[0][1]), float(matrix[1][1]), float(matrix[1][2]))
+    marks = [(x * MAT_WIDTH, y * MAT_HEIGHT) for (x, y) in marks]
+    scaled_matrix, _ = cv2.estimateAffine2D(numpy.array(marks), numpy.array(REGISTRATION_MARKS), confidence=0.99999, maxIters=20000, refineIters=100)
+    print("MAT CORRECTION", format_transform_matrix(scaled_matrix))
+    return matrix
 
 CORRECTION = calculate_correction()
-
 
 if __name__ == "__main__":
     args = sys.argv[1:]
