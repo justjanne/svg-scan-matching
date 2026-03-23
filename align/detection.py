@@ -13,7 +13,7 @@ def calculate_params(values):
     min_val = min(values)
     max_val = max(values)
     std = (max_val + min_val) / 2
-    dev = (max_val - min_val) * 1.5
+    dev = (max_val - min_val)
     return (std, dev)
 
 params_area = calculate_params(expected_area)
